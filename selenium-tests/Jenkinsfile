@@ -1,0 +1,110 @@
+pipeline {
+    agent any
+    
+    tools {
+        docker 'docker'
+    }
+    
+    environment {
+        APP_URL = 'http://localhost:3000'
+        HEADLESS = 'true'
+        USE_LOCAL = 'false'
+    }
+    
+    stages {
+        stage('Checkout Code') {
+            steps {
+                checkout scm
+                sh '''
+                    echo "📦 Repository: ${GIT_URL}"
+                    echo "🌿 Branch: ${GIT_BRANCH}"
+                    echo "🔑 Commit: ${GIT_COMMIT}"
+                '''
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("mern-selenium-tests:${env.BUILD_ID}")
+                }
+            }
+        }
+        
+        stage('Run Selenium Tests') {
+            steps {
+                script {
+                    docker.image("mern-selenium-tests:${env.BUILD_ID}").inside('--shm-size=2g') {
+                        sh '''
+                            echo "🚀 Starting Selenium tests..."
+                            echo "🌐 Testing URL: ${APP_URL}"
+                            python -m pytest tests/ -v --html=test_report.html --self-contained-html
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Publish Test Results') {
+            steps {
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: '.',
+                    reportFiles: 'test_report.html',
+                    reportName: 'Selenium Test Report'
+                ])
+                
+                archiveArtifacts artifacts: 'test_report.html, screenshots/*.png', fingerprint: true
+            }
+        }
+    }
+    
+    post {
+        always {
+            sh '''
+                echo "🧹 Cleaning up..."
+                docker system prune -f
+            '''
+        }
+        
+        success {
+            emailext(
+                subject: "✅ SUCCESS: MERN Memories Selenium Tests - Build #${BUILD_NUMBER}",
+                body: """
+                <h2>✅ Selenium Tests Passed Successfully!</h2>
+                <p><strong>Project:</strong> MERN Memories</p>
+                <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
+                <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
+                <p><strong>Duration:</strong> ${currentBuild.durationString}</p>
+                <p><strong>Test Report:</strong> <a href="${BUILD_URL}HTML_Report/">View HTML Report</a></p>
+                <hr>
+                <p><a href="${BUILD_URL}">View Build Details</a></p>
+                <p><a href="${BUILD_URL}console">View Console Output</a></p>
+                """,
+                to: '${GIT_COMMITTER_EMAIL}, qasimmalik@cui.edu.pk',
+                mimeType: 'text/html'
+            )
+        }
+        
+        failure {
+            emailext(
+                subject: "❌ FAILURE: MERN Memories Selenium Tests - Build #${BUILD_NUMBER}",
+                body: """
+                <h2>❌ Selenium Tests Failed!</h2>
+                <p><strong>Project:</strong> MERN Memories</p>
+                <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
+                <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
+                <p><strong>Failed Stage:</strong> ${STAGE_NAME}</p>
+                <p><strong>Test Report:</strong> <a href="${BUILD_URL}HTML_Report/">View HTML Report</a></p>
+                <hr>
+                <p><a href="${BUILD_URL}">View Build Details</a></p>
+                <p><a href="${BUILD_URL}console">View Console Output</a></p>
+                """,
+                to: '${GIT_COMMITTER_EMAIL}, areebaniazi26@gmail.com',
+                mimeType: 'text/html'
+            )
+        }
+    }
+}
