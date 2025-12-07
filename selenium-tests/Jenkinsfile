@@ -2,13 +2,14 @@ pipeline {
     agent any
     
     tools {
-        docker 'docker'
+        nodejs 'node18'
     }
     
     environment {
         APP_URL = 'http://localhost:3000'
         HEADLESS = 'true'
-        USE_LOCAL = 'false'
+        USE_LOCAL = 'true'
+        EMAIL_RECIPIENTS = '${GIT_COMMITTER_EMAIL}, qasimmalik@cui.edu.pk'
     }
     
     stages {
@@ -16,72 +17,112 @@ pipeline {
             steps {
                 checkout scm
                 sh '''
-                    echo "📦 Repository: ${GIT_URL}"
-                    echo "🌿 Branch: ${GIT_BRANCH}"
-                    echo "🔑 Commit: ${GIT_COMMIT}"
+                    echo "🚀 Starting MERN Memories Pipeline"
+                    echo "Repository: ${GIT_URL}"
+                    echo "Branch: ${GIT_BRANCH}"
                 '''
             }
         }
         
-        stage('Build Docker Image') {
+        stage('Start MongoDB') {
             steps {
-                script {
-                    docker.build("mern-selenium-tests:${env.BUILD_ID}")
+                sh '''
+                    echo "🐳 Starting MongoDB..."
+                    docker run -d -p 27017:27017 --name mongo-memories mongo
+                    sleep 5
+                '''
+            }
+        }
+        
+        stage('Install Backend Dependencies') {
+            steps {
+                dir('backend') {
+                    sh 'npm install'
                 }
+            }
+        }
+        
+        stage('Start Backend Server') {
+            steps {
+                sh '''
+                    cd backend
+                    nohup npm start > backend.log 2>&1 &
+                    echo "Backend started"
+                    sleep 10
+                '''
+            }
+        }
+        
+        stage('Install Frontend Dependencies') {
+            steps {
+                dir('frontend') {
+                    sh 'npm install'
+                }
+            }
+        }
+        
+        stage('Start Frontend Server') {
+            steps {
+                sh '''
+                    cd frontend
+                    nohup npm start > frontend.log 2>&1 &
+                    echo "Frontend started"
+                    sleep 15
+                '''
             }
         }
         
         stage('Run Selenium Tests') {
             steps {
-                script {
-                    docker.image("mern-selenium-tests:${env.BUILD_ID}").inside('--shm-size=2g') {
-                        sh '''
-                            echo "🚀 Starting Selenium tests..."
-                            echo "🌐 Testing URL: ${APP_URL}"
-                            python -m pytest tests/ -v --html=test_report.html --self-contained-html
-                        '''
-                    }
+                dir('selenium-tests') {
+                    sh '''
+                        echo "🧪 Installing Python dependencies..."
+                        pip install -r requirements.txt
+                        echo "🧪 Running Selenium tests..."
+                        python run_tests.py
+                    '''
                 }
             }
         }
         
-        stage('Publish Test Results') {
+        stage('Stop Servers') {
             steps {
-                publishHTML([
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: '.',
-                    reportFiles: 'test_report.html',
-                    reportName: 'Selenium Test Report'
-                ])
-                
-                archiveArtifacts artifacts: 'test_report.html, screenshots/*.png', fingerprint: true
+                sh '''
+                    echo "🧹 Cleaning up..."
+                    pkill -f "node" || true
+                    docker stop mongo-memories || true
+                    docker rm mongo-memories || true
+                '''
             }
         }
     }
     
     post {
         always {
-            sh '''
-                echo "🧹 Cleaning up..."
-                docker system prune -f
-            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'selenium-tests',
+                reportFiles: 'test_report.html',
+                reportName: 'Selenium Test Report'
+            ])
+            
+            archiveArtifacts artifacts: 'selenium-tests/test_report.html, selenium-tests/screenshots/*.png', fingerprint: true
         }
         
         success {
             emailext(
-                subject: "✅ SUCCESS: MERN Memories Selenium Tests - Build #${BUILD_NUMBER}",
+                subject: "✅ SUCCESS: MERN Memories Pipeline - Build #${BUILD_NUMBER}",
                 body: """
-                <h2>✅ Selenium Tests Passed Successfully!</h2>
-                <p><strong>Project:</strong> MERN Memories</p>
+                <h2>🎉 Pipeline Execution Successful!</h2>
+                <p><strong>Project:</strong> MERN Memories Application</p>
                 <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
                 <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
                 <p><strong>Duration:</strong> ${currentBuild.durationString}</p>
                 <p><strong>Test Report:</strong> <a href="${BUILD_URL}HTML_Report/">View HTML Report</a></p>
                 <hr>
                 <p><a href="${BUILD_URL}">View Build Details</a></p>
-                <p><a href="${BUILD_URL}console">View Console Output</a></p>
                 """,
                 to: '${GIT_COMMITTER_EMAIL}, qasimmalik@cui.edu.pk',
                 mimeType: 'text/html'
@@ -90,10 +131,10 @@ pipeline {
         
         failure {
             emailext(
-                subject: "❌ FAILURE: MERN Memories Selenium Tests - Build #${BUILD_NUMBER}",
+                subject: "❌ FAILURE: MERN Memories Pipeline - Build #${BUILD_NUMBER}",
                 body: """
-                <h2>❌ Selenium Tests Failed!</h2>
-                <p><strong>Project:</strong> MERN Memories</p>
+                <h2>⚠️ Pipeline Execution Failed!</h2>
+                <p><strong>Project:</strong> MERN Memories Application</p>
                 <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
                 <p><strong>Status:</strong> ${currentBuild.currentResult}</p>
                 <p><strong>Failed Stage:</strong> ${STAGE_NAME}</p>
@@ -102,7 +143,7 @@ pipeline {
                 <p><a href="${BUILD_URL}">View Build Details</a></p>
                 <p><a href="${BUILD_URL}console">View Console Output</a></p>
                 """,
-                to: '${GIT_COMMITTER_EMAIL}, areebaniazi26@gmail.com',
+                to: '${GIT_COMMITTER_EMAIL}, qasimmalik@gmail.com',
                 mimeType: 'text/html'
             )
         }
