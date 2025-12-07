@@ -9,7 +9,7 @@ pipeline {
         APP_URL = 'http://localhost:3000'
         HEADLESS = 'true'
         USE_LOCAL = 'true'
-        EMAIL_RECIPIENTS = '${GIT_COMMITTER_EMAIL}, qasimmalik@cui.edu.pk'
+        EMAIL_RECIPIENTS = '${GIT_COMMITTER_EMAIL}, qasimmalik@gmail.com'
     }
     
     stages {
@@ -124,7 +124,7 @@ pipeline {
                 <hr>
                 <p><a href="${BUILD_URL}">View Build Details</a></p>
                 """,
-                to: '${GIT_COMMITTER_EMAIL}, qasimmalik@cui.edu.pk',
+                to: '${GIT_COMMITTER_EMAIL}, qasimmalik@gmail.com',
                 mimeType: 'text/html'
             )
         }
