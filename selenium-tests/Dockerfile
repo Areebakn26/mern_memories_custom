@@ -1,6 +1,7 @@
 FROM python:3.9-slim
 
-# Install system dependencies
+# ============ SYSTEM DEPENDENCIES ============
+# Install system dependencies for Chrome and testing
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -30,39 +31,71 @@ RUN apt-get update && apt-get install -y \
     libxfixes3 \
     libxrandr2 \
     xdg-utils \
-    --no-install-recommends
+    --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable
+# ============ INSTALL CHROME ============
+# Add Google Chrome repository and install
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable
 
-# Install ChromeDriver
-RUN CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) \
-    && wget -N http://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip \
-    && unzip chromedriver_linux64.zip \
-    && chmod +x chromedriver \
-    && mv -f chromedriver /usr/local/bin/chromedriver
+# ============ INSTALL CHROMEDRIVER ============
+# Install ChromeDriver matching Chrome version
+RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+') && \
+    CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d'.' -f1) && \
+    echo "Chrome version: $CHROME_VERSION" && \
+    echo "Chrome major version: $CHROME_MAJOR_VERSION" && \
+    CHROME_DRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION") && \
+    echo "ChromeDriver version: $CHROME_DRIVER_VERSION" && \
+    wget -N "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" && \
+    unzip chromedriver_linux64.zip && \
+    chmod +x chromedriver && \
+    mv -f chromedriver /usr/local/bin/chromedriver && \
+    rm chromedriver_linux64.zip
 
-# Clean up
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && rm chromedriver_linux64.zip
-
-# Create working directory
+# ============ SETUP PYTHON ENVIRONMENT ============
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy requirements file first (for better caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy test files
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# ============ COPY TEST FILES ============
+# Copy all test files
 COPY . .
 
-# Set environment variables
-ENV HEADLESS=true
-ENV USE_LOCAL=false
-ENV APP_URL=http://frontend:3000
+# ============ CREATE DIRECTORIES ============
+# Create directories for test results and screenshots
+RUN mkdir -p /app/test-results && \
+    mkdir -p /app/ss && \
+    mkdir -p /app/tests
 
-# Run tests
-CMD ["python", "run_tests.py"]
+# ============ VERIFICATION ============
+# Verify installation
+RUN echo "=== Verification ===" && \
+    python --version && \
+    pip list | grep -E "selenium|pytest|webdriver" && \
+    google-chrome --version && \
+    chromedriver --version && \
+    echo "=== File Structure ===" && \
+    find /app -type f -name "*.py" | head -10
+
+# ============ ENVIRONMENT VARIABLES ============
+# Set environment variables for headless Chrome
+ENV HEADLESS=true
+ENV DISPLAY=:99
+ENV PYTHONPATH=/app
+ENV SCREENSHOT_DIR=/app/ss
+
+# ============ DEFAULT COMMAND ============
+# Default command to run tests (can be overridden by Jenkins)
+CMD ["python", "-m", "pytest", "tests/", "-v", \
+     "--html=/app/test-results/report.html", \
+     "--self-contained-html", \
+     "--junitxml=/app/test-results/junit-results.xml", \
+     "--tb=short"]
