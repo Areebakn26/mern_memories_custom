@@ -4,7 +4,6 @@ FROM python:3.9-slim
 # Install system dependencies for Chrome and testing
 RUN apt-get update && apt-get install -y \
     wget \
-    gnupg \
     unzip \
     curl \
     fonts-liberation \
@@ -36,21 +35,22 @@ RUN apt-get update && apt-get install -y \
 
 # ============ INSTALL CHROME ============
 # Add Google Chrome repository and install
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
-    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
+RUN mkdir -p /etc/apt/keyrings && \
+    wget -q -O /etc/apt/keyrings/chrome.asc https://dl-ssl.google.com/linux/linux_signing_key.pub && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
     apt-get update && \
     apt-get install -y google-chrome-stable
 
 # ============ INSTALL CHROMEDRIVER ============
 # Install ChromeDriver matching Chrome version
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+') && \
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') && \
     CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d'.' -f1) && \
     echo "Chrome version: $CHROME_VERSION" && \
     echo "Chrome major version: $CHROME_MAJOR_VERSION" && \
     CHROME_DRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION") && \
     echo "ChromeDriver version: $CHROME_DRIVER_VERSION" && \
-    wget -N "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" && \
-    unzip chromedriver_linux64.zip && \
+    wget -q "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" && \
+    unzip -q chromedriver_linux64.zip && \
     chmod +x chromedriver && \
     mv -f chromedriver /usr/local/bin/chromedriver && \
     rm chromedriver_linux64.zip
