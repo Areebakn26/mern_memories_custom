@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const url = 'http://localhost:5000/posts';
+// The key fix: Use an environment variable for the base URL
+// In development: uses localhost:5000
+// In production (Vercel): uses the REACT_APP_API_URL you set
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const url = `${API_URL}/posts`;
 
 export const fetchPosts = () => axios.get(url);
 export const createPost = (newPost) => axios.post(url, newPost);
