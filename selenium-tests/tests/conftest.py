@@ -3,8 +3,10 @@ import time
 import os
 import subprocess
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
+from webdriver_manager.chrome import ChromeDriverManager
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -89,13 +91,14 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.fixture(scope="session")
 def driver():
-    """Create and configure Chrome driver"""
+    """Create and configure Chrome driver using webdriver-manager"""
     chrome_options = Options()
     
     # Headless mode for CI/CD
     if os.getenv("HEADLESS", "true").lower() == "true":
         chrome_options.add_argument("--headless")
     
+    # Required for Docker/CI environments
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
@@ -105,8 +108,22 @@ def driver():
     # Add user agent
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
-    # Initialize driver
-    driver = webdriver.Chrome(options=chrome_options)
+    # Disable logging for cleaner output
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    
+    # Initialize driver with webdriver-manager
+    print("🔧 Initializing Chrome driver with webdriver-manager...")
+    try:
+        # Use webdriver-manager to automatically download and manage chromedriver
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print(f"✅ Chrome driver initialized: {driver.capabilities['browserVersion']}")
+    except Exception as e:
+        print(f"❌ Failed to initialize driver: {e}")
+        # Fallback to system chromedriver if webdriver-manager fails
+        print("⚠️  Falling back to system chromedriver...")
+        driver = webdriver.Chrome(options=chrome_options)
+    
     driver.implicitly_wait(15)  # Increased for local server
     driver.set_page_load_timeout(30)
     
@@ -115,9 +132,15 @@ def driver():
     # Cleanup
     try:
         driver.save_screenshot("final_state.png")
+        print("📸 Final screenshot saved")
+    except Exception as e:
+        print(f"⚠️  Could not save final screenshot: {e}")
+    
+    try:
+        driver.quit()
+        print("✅ Chrome driver closed")
     except:
         pass
-    driver.quit()
 
 @pytest.fixture(scope="session")
 def base_url():
@@ -155,5 +178,6 @@ def cleanup_memories(driver, base_url):
         driver.get(base_url)
         time.sleep(2)
         # Logic to delete test memories if needed
-    except:
-        pass
+        print("🧹 Test cleanup completed")
+    except Exception as e:
+        print(f"⚠️  Cleanup failed: {e}")

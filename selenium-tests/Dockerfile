@@ -1,7 +1,6 @@
 FROM python:3.9-slim
 
 # ============ SYSTEM DEPENDENCIES ============
-# Install system dependencies for Chrome and testing
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
@@ -34,26 +33,15 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # ============ INSTALL CHROME ============
-# Add Google Chrome repository and install
 RUN mkdir -p /etc/apt/keyrings && \
     wget -q -O /etc/apt/keyrings/chrome.asc https://dl-ssl.google.com/linux/linux_signing_key.pub && \
     echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/chrome.asc] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list && \
     apt-get update && \
     apt-get install -y google-chrome-stable
 
-# ============ INSTALL CHROMEDRIVER ============
-# Install ChromeDriver matching Chrome version
-RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') && \
-    CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d'.' -f1) && \
-    echo "Chrome version: $CHROME_VERSION" && \
-    echo "Chrome major version: $CHROME_MAJOR_VERSION" && \
-    CHROME_DRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION") && \
-    echo "ChromeDriver version: $CHROME_DRIVER_VERSION" && \
-    wget -q "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" && \
-    unzip -q chromedriver_linux64.zip && \
-    chmod +x chromedriver && \
-    mv -f chromedriver /usr/local/bin/chromedriver && \
-    rm chromedriver_linux64.zip
+# ============ INSTALL CHROMEDRIVER (FIXED) ============
+# Using webdriver-manager which automatically handles version matching
+RUN pip install --no-cache-dir webdriver-manager
 
 # ============ SETUP PYTHON ENVIRONMENT ============
 WORKDIR /app
@@ -80,10 +68,7 @@ RUN mkdir -p /app/test-results && \
 RUN echo "=== Verification ===" && \
     python --version && \
     pip list | grep -E "selenium|pytest|webdriver" && \
-    google-chrome --version && \
-    chromedriver --version && \
-    echo "=== File Structure ===" && \
-    find /app -type f -name "*.py" | head -10
+    google-chrome --version
 
 # ============ ENVIRONMENT VARIABLES ============
 # Set environment variables for headless Chrome

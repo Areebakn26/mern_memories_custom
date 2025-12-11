@@ -35,6 +35,15 @@ pipeline {
                 }
             }
         }
+        stage('Create Directories') {
+            steps {
+                sh '''
+                    echo "📁 Creating required directories..."
+                    mkdir -p ${WORKSPACE}/test-results
+                    mkdir -p ${WORKSPACE}/screenshots
+                '''
+            }
+        }
         
         stage('Run Selenium Tests') {
             steps {
